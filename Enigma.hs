@@ -12,38 +12,50 @@ module Enigma where
   type Rotor = (String, Int)
   type Reflector = [(Char, Char)]
   type Offsets = (Int, Int, Int) 
-  type Stecker = Bool -- the supplied type is not correct; fix it!
+  type Stecker = ((Char, Char)) -- the supplied type is not correct; fix it!
   
   data Enigma = SimpleEnigma Rotor Rotor Rotor Reflector Offsets
                 | SteckeredEnigma Rotor Rotor Rotor Reflector Offsets Stecker
 
   encodeMessage :: String -> Enigma -> String
-  encodeMessage str enigma = [encode [c] (checkOffset enigma) | c <- str]
+  encodeMessage [] _ = []
+  -- encodeMessage str enigma = merge [(encodeChar (toUpper (head str)) checkEnigma)] (encodeMessage (tail str) checkEnigma)
+  --   where checkEnigma = checkOffset enigma
 
+  encodeMessage str enigma = [if (toUpper c) `elem` ['A'..'Z'] 
+                                then encodeChar (toUpper c) (checkOffset enigma) 
+                              else 
+                                c 
+                              | c <- str]
+
+  -- Encodes a character
+  encodeChar :: Char -> Enigma -> Char
+  encodeChar c (SimpleEnigma rotor1 rotor2 rotor3 ref _) = tripleEncode (reflectLetter ref trip1) rotor1 rotor2 rotor3
+    where trip1 = tripleEncode c rotor1 rotor2 rotor3 
+
+  encodeChar c (SteckeredEnigma rotor1 rotor2 rotor3 ref _ _) = tripleEncode (reflectLetter ref trip1) rotor3 rotor2 rotor1
+    where trip1 = tripleEncode c rotor1 rotor2 rotor3 
+
+  -- Encodes a letter three times with the three different rotors
   tripleEncode :: Char -> Rotor -> Rotor -> Rotor -> Char
-  tripleEncode c rotor1 rotor2 rotor3 = encodeChar rotor1 (encodeChar rotor2 (encodeChar rotor3 c))
+  tripleEncode c rotor1 rotor2 rotor3 = rotorEq rotor3 (rotorEq rotor2 (rotorEq rotor1 c))
 
   checkOffset :: Enigma -> Enigma
-  checkOffset (SimpleEnigma (rr,rn) (mr,mn) (lr,ln) r (or, om, ol)) | rn+1 == or = SimpleEnigma (rr,rn) (mr,mn) (lr,ln) r (or+1, om+1, ol)
-                                                                    | (rn+1 == or && mn+1 == om) = SimpleEnigma (rr,rn) (mr,mn) (lr,ln) r (or+1, om+1, ol+1)
-                                                                    | otherwise = SimpleEnigma (rr,rn) (mr,mn) (lr,ln) r (or+1, om, ol)
+  checkOffset (SimpleEnigma (rr,rn) (mr,mn) (lr,ln) r (or, om, ol)) | ln+1 == or = if SimpleEnigma (rotateRotor(rr,rn)) (rotateRotor(mr,mn)) (lr,ln) r (or, om+1, ol+1)
+                                                                    | (ln+1 == or && mn+1 == om) = SimpleEnigma (rotateRotor (rr,rn)) (rotateRotor (mr,mn)) (rotateRotor(lr,ln)) r (or+1, om+1, ol+1)
+                                                                    | otherwise = SimpleEnigma (rotateRotor(rr,rn)) (mr,mn) (lr,ln) r (or, om, ol+1)
 
-  checkOffset (SteckeredEnigma (rr,rn) (mr,mn) (lr,ln) r (or, om, ol) s) | rn+1 == or = SteckeredEnigma (rr,rn) (mr,mn) (lr,ln) r (or+1, om+1, ol) s
-                                                                         | (rn+1 == or && mn+1 == om) = SteckeredEnigma (rr,rn) (mr,mn) (lr,ln) r (or+1, om+1, ol+1) s
-                                                                         | otherwise = SteckeredEnigma (rr,rn) (mr,mn) (lr,ln) r (or+1, om, ol) s
+  checkOffset (SteckeredEnigma (rr,rn) (mr,mn) (lr,ln) r (or, om, ol) s) | rn+1 == or = SteckeredEnigma (rotateRotor(rr,rn)) (rotateRotor(mr,mn)) (lr,ln) r (or+1, om+1, ol) s
+                                                                         | (rn+1 == or && mn+1 == om) = SteckeredEnigma (rotateRotor (rr,rn)) (rotateRotor (mr,mn)) (rotateRotor(lr,ln)) r (or+1, om+1, ol+1) s
+                                                                         | otherwise = SteckeredEnigma (rotateRotor(rr,rn)) (mr,mn) (lr,ln) r (or+1, om, ol) s
 
-  encode :: Char -> Enigma -> Char
-  encode str (SimpleEnigma rotor1 rotor2 rotor3 ref _) = tripleEncode (reflectLetter ref trip1) rotor3 rotor2 rotor1
-    where trip1 = tripleEncode (head str) rotor1 rotor2 rotor3 
+  -- Returns the character at position 'alphaPos c'
+  rotorEq :: (String, Int) -> Char -> Char
+  rotorEq (st, _) c = st!!(alphaPos c)
 
-  encode str (SteckeredEnigma rotor1 rotor2 rotor3 ref _ _) = tripleEncode (reflectLetter ref trip1) rotor3 rotor2 rotor1
-    where trip1 = tripleEncode (head str) rotor1 rotor2 rotor3 
-
-  encodeChar :: (String, Int) -> Char -> Char
-  encodeChar (st, _) c = st!!(alphaPos c)
-
+  -- Returns the reflected letter from the tuple list by iterating though all tuples finding one item that matches input
   reflectLetter :: Reflector -> Char -> Char
-  reflectLetter ref c = head [b | (a,b) <- ref, a == c]
+  reflectLetter ref c = head [if c == a then b else a | (a,b) <- ref, a == c || b == c]
 
   swapLetter :: (Char, Char) -> [Char] -> String
   swapLetter (a,b) = concatMap (\c -> if c == a then [b] else [c])
@@ -51,6 +63,11 @@ module Enigma where
   -- Takes the head of the string and adds it to the tail, also adds one to the offset
   rotateRotor :: Rotor -> Rotor
   rotateRotor (st, n) = (((tail st) ++ [(head st)]), n)
+
+  merge :: [a] -> [a] -> [a]
+  merge xs     []     = xs
+  merge []     ys     = ys
+  merge (x:xs) (y:ys) = x : y : merge xs ys
 
 {- Part 2: Finding the Longest Menu -}
 
