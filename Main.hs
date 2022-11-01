@@ -2,7 +2,7 @@ import Enigma
 
 enigma1 = (SimpleEnigma rotor1 rotor2 rotor3 reflectorB (0,0,25))
 plugboard = [('F','T'),('D','U'),('V','A'),('K','W'),('H','Z'),('I','X')] 
---enigma2 = (SteckeredEnigma rotor1 rotor2 rotor3 reflectorB (0,0,25) plugboard)
+enigma2 = (SteckeredEnigma rotor1 rotor2 rotor3 reflectorB (0,0,25) plugboard)
 crib1 = "WETTERVORHERSAGEBISKAYA"
 message1 = "RWIVTYRESXBFOGKUHQBAISE"
 
@@ -25,8 +25,8 @@ main = do
     print "First a test of encodeMessage: "
     print (encodeMessage "Here is a test input string." enigma1)
     print "And another test of encodeMessage: "
-    --print (encodeMessage "Here is a test input string." enigma2)
-    print "Then a test of longestMenu: "
+    print (encodeMessage "Here is a test input string." enigma2)
+    --print "Then a test of longestMenu: "
     --print (longestMenu (zip crib1 message1))
-    print "And now a test of breakEnigma: "
+    --print "And now a test of breakEnigma: "
     --printMaybe (breakEnigma (zip crib2 message2))

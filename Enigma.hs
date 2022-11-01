@@ -13,7 +13,7 @@ module Enigma where
   type Rotor = (String, Int)
   type Reflector = [(Char, Char)]
   type Offsets = (Int, Int, Int) 
-  type Stecker = ((Char, Char)) -- the supplied type is not correct; fix it!
+  type Stecker = [(Char, Char)]
   
   data Enigma = SimpleEnigma Rotor Rotor Rotor Reflector Offsets
                 | SteckeredEnigma Rotor Rotor Rotor Reflector Offsets Stecker
@@ -23,18 +23,31 @@ module Enigma where
   encodeMessage [] _ = []
   encodeMessage str (SimpleEnigma (rr,rn) (mr,mn) (lr,ln) r (ol, om, or)) = 
     startEncoding str (SimpleEnigma (setRotor or (rr,rn)) (setRotor om (mr,mn)) (setRotor ol (lr,ln)) r (ol, om, or))
+  
+  encodeMessage str (SteckeredEnigma (rr,rn) (mr,mn) (lr,ln) r (ol, om, or) pb) = 
+    startEncoding str (SteckeredEnigma (setRotor or (rr,rn)) (setRotor om (mr,mn)) (setRotor ol (lr,ln)) r (ol, om, or) pb)
 
   -- Iterates through all Chars in the string calling encodeChar for each
   -- If char is not in the range ['A'..'Z'], i.e. special cases, it ignores it
   startEncoding :: String -> Enigma -> String
   startEncoding [] _ = []
-  startEncoding str enigma = if (toUpper (head str)) `elem` ['A'..'Z']
-                              then merge ([encodeChar (toUpper (head str)) (checkOffset enigma)]) (startEncoding (tail str) (checkOffset enigma)) 
-                             else
-                              merge ([head str]) (startEncoding (tail str) (enigma))
+  startEncoding str (SimpleEnigma r1 r2 r3 ref off) = 
+    if (toUpper (head str)) `elem` ['A'..'Z']
+      then merge ([encodeChar (toUpper (head str)) checkEnigma]) (startEncoding (tail str) checkEnigma) 
+    else
+      merge ([head str]) (startEncoding (tail str) simpleEnigma)
+    where simpleEnigma = SimpleEnigma r1 r2 r3 ref off
+          checkEnigma = checkOffset simpleEnigma
 
-  --startEncoding str enigma = [encodeChar (toUpper c) (checkOffset enigma) | c <- str, (toUpper c) `elem` ['A'..'Z']]
-  
+  --missing stecket on second round
+  startEncoding str (SteckeredEnigma r1 r2 r3 ref off ste) = 
+    if (toUpper (head str)) `elem` ['A'..'Z']
+      then merge ([steckerLetter ste (encodeChar (steckerLetter ste (toUpper (head str))) checkEnigma)]) (startEncoding (tail str) checkEnigma) 
+    else
+      merge ([head str]) (startEncoding (tail str) steckeredEnigma)
+    where steckeredEnigma = SteckeredEnigma r1 r2 r3 ref off ste
+          checkEnigma = checkOffset steckeredEnigma
+
   -- Sets the initial rotors depending on the initial offset
   -- Recursive function so that it is repeated n times
   setRotor :: Int -> Rotor -> Rotor
@@ -43,34 +56,54 @@ module Enigma where
 
   -- Encodes a character by making it travel through each rotor, reflector and back
   encodeChar :: Char -> Enigma -> Char
-  encodeChar c (SimpleEnigma rotor1 rotor2 rotor3 ref _) = tripleEncode False (reflect ref trip1) rotor3 rotor2 rotor1
-    where trip1 = tripleEncode True c rotor1 rotor2 rotor3 
+  encodeChar c (SimpleEnigma r1 r2 r3 ref _) = tripleEncode False (reflect ref trip1) r3 r2 r1
+    where trip1 = tripleEncode True c r1 r2 r3 
 
-  encodeChar c (SteckeredEnigma rotor1 rotor2 rotor3 ref _ _) = tripleEncode False (reflect ref trip1) rotor3 rotor2 rotor1
-    where trip1 = tripleEncode True c rotor1 rotor2 rotor3 
+  encodeChar c (SteckeredEnigma r1 r2 r3 ref _ _) = tripleEncode False (reflect ref trip1) r3 r2 r1
+    where trip1 = tripleEncode True c r1 r2 r3 
 
   -- Encodes a letter three times with the three different rotors
   -- Boolean input indicates if its going left to right or viceversa
   tripleEncode :: Bool -> Char -> Rotor -> Rotor -> Rotor -> Char
-  tripleEncode True c rotor1 rotor2 rotor3 = rotorEq rotor3 (rotorEq rotor2 (rotorEq rotor1 c))
-  tripleEncode False c rotor1 rotor2 rotor3 = alphabetEq rotor3 (alphabetEq rotor2 (alphabetEq rotor1 c))
+  tripleEncode True c r1 r2 r3 = rotorEq r3 (rotorEq r2 (rotorEq r1 c))
+  tripleEncode False c r1 r2 r3 = alphabetEq r3 (alphabetEq r2 (alphabetEq r1 c))
 
   -- Function that adds one to the offsets and checks if it will affect other rotors
   -- If offset greater than 25, rotor offset is set to 0
   -- If offset matches the knock-on position then add one to the rotor on the left
   checkOffset :: Enigma -> Enigma
-  checkOffset (SimpleEnigma (rr,rn) (mr,mn) (lr,ln) r (ol, om, or)) | rn+1 == or = SimpleEnigma (rotateRotor(rr,rn)) (rotateRotor(mr,mn)) (lr,ln) r (ol, ofo (om+1), ofo (or+1))
-                                                                    | (rn+1 == or && mn+1 == om) = SimpleEnigma (rotateRotor (rr,rn)) (rotateRotor (mr,mn)) (rotateRotor(lr,ln)) r (ofo (ol+1), ofo (om+1), ofo (or+1))
-                                                                    | otherwise = SimpleEnigma (rotateRotor(rr,rn)) (mr,mn) (lr,ln) r (ol, om, or+1)
+  checkOffset (SimpleEnigma (rr,rn) (mr,mn) (lr,ln) r (ol, om, or)) 
+    | rn+1 == or 
+      = SimpleEnigma (rotateRight) (rotateMid) (lr,ln) r (ol, ofMid, ofRight)
+    | (rn+1 == or && mn+1 == om) 
+      = SimpleEnigma (rotateRight) (rotateMid) (rotateLeft) r (ofLeft, ofMid, ofRight)
+    | otherwise 
+      = SimpleEnigma (rotateRight) (mr,mn) (lr,ln) r (ol, om, ofRight)
+        where rotateRight = rotateRotor (rr,rn)
+              rotateMid = rotateRotor (mr,mn)
+              rotateLeft = rotateRotor (lr,ln)
+              ofRight = offsetOverflow (or+1)
+              ofMid = offsetOverflow (om+1)
+              ofLeft = offsetOverflow (ol+1)
 
-  checkOffset (SteckeredEnigma (rr,rn) (mr,mn) (lr,ln) r (ol, om, or) s) | rn+1 == or = SteckeredEnigma (rotateRotor(rr,rn)) (rotateRotor(mr,mn)) (lr,ln) r (or+1, om+1, ol) s
-                                                                         | (rn+1 == or && mn+1 == om) = SteckeredEnigma (rotateRotor (rr,rn)) (rotateRotor (mr,mn)) (rotateRotor(lr,ln)) r (or+1, om+1, ol+1) s
-                                                                         | otherwise = SteckeredEnigma (rotateRotor(rr,rn)) (mr,mn) (lr,ln) r (or+1, om, ol) s
+  checkOffset (SteckeredEnigma (rr,rn) (mr,mn) (lr,ln) r (ol, om, or) s) 
+    | rn+1 == or 
+      = SteckeredEnigma (rotateRight) (rotateMid) (lr,ln) r (ofLeft, ofMid, ofRight) s
+    | (rn+1 == or && mn+1 == om) 
+      = SteckeredEnigma (rotateRight) (rotateMid) (rotateLeft) r (ofLeft, ofMid, ofRight) s
+    | otherwise 
+      = SteckeredEnigma (rotateRight) (mr,mn) (lr,ln) r (ol, om, ofRight) s
+        where rotateRight = rotateRotor (rr,rn)
+              rotateMid = rotateRotor (mr,mn)
+              rotateLeft = rotateRotor (lr,ln)
+              ofRight = offsetOverflow (or+1)
+              ofMid = offsetOverflow (om+1)
+              ofLeft = offsetOverflow (ol+1)
 
   -- Short for offset Overflow
   -- Checks if offset is greater than 25, if so returns 0
-  ofo :: Int -> Int
-  ofo n = if n >= 26 then 0 else n
+  offsetOverflow :: Int -> Int
+  offsetOverflow n = if n >= 26 then 0 else n
 
   -- Returns the character at position 'alphaPos char' in a rotor
   rotorEq :: (String, Int) -> Char -> Char
@@ -84,6 +117,10 @@ module Enigma where
   -- Returns the reflected letter from the tuple list by iterating though all tuples finding one item that matches input
   reflect :: Reflector -> Char -> Char
   reflect ref c = head [if c == a then b else a | (a,b) <- ref, a == c || b == c]
+
+  steckerLetter :: Stecker -> Char -> Char
+  steckerLetter ste c = if length reflect == 0 then c else head reflect
+    where reflect = [if c == a then b else a | (a,b) <- ste, a == c || b == c]
   
   -- Takes the head of the string and adds it to the tail, also adds one to the offset
   rotateRotor :: Rotor -> Rotor
@@ -91,8 +128,8 @@ module Enigma where
 
   -- Merges two lists into one
   merge :: [a] -> [a] -> [a]
-  merge xs     []     = xs
-  merge []     ys     = ys
+  merge xs [] = xs
+  merge [] ys     = ys
   merge (x:xs) (y:ys) = x : y : merge xs ys
 
 {- Part 2: Finding the Longest Menu -}
