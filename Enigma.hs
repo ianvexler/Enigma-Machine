@@ -27,16 +27,19 @@ module Enigma where
   -- Iterates through all Chars in the string calling encodeChar for each
   -- If char is not in the range ['A'..'Z'], i.e. special cases, it ignores it
   startEncoding :: String -> Enigma -> String
-  startEncoding [] = []
-  --startEncoding str enigma = startEncoding
-  startEncoding str enigma = [encodeChar (toUpper c) (checkOffset enigma) | c <- str, (toUpper c) `elem` ['A'..'Z']]
+  startEncoding [] _ = []
+  startEncoding str enigma = if (toUpper (head str)) `elem` ['A'..'Z']
+                              then merge ([encodeChar (toUpper (head str)) (checkOffset enigma)]) (startEncoding (tail str) (checkOffset enigma)) 
+                             else
+                              merge ([head str]) (startEncoding (tail str) (enigma))
+
+  --startEncoding str enigma = [encodeChar (toUpper c) (checkOffset enigma) | c <- str, (toUpper c) `elem` ['A'..'Z']]
   
   -- Sets the initial rotors depending on the initial offset
   -- Recursive function so that it is repeated n times
   setRotor :: Int -> Rotor -> Rotor
   setRotor 0 rotor = rotor
   setRotor n rotor = setRotor (n-1) (rotateRotor rotor)
-
 
   -- Encodes a character by making it travel through each rotor, reflector and back
   encodeChar :: Char -> Enigma -> Char
@@ -56,13 +59,18 @@ module Enigma where
   -- If offset greater than 25, rotor offset is set to 0
   -- If offset matches the knock-on position then add one to the rotor on the left
   checkOffset :: Enigma -> Enigma
-  checkOffset (SimpleEnigma (rr,rn) (mr,mn) (lr,ln) r (ol, om, or)) | rn+1 == or = SimpleEnigma (rotateRotor(rr,rn)) (rotateRotor(mr,mn)) (lr,ln) r (ol, om+1, or+1)
-                                                                    | (rn+1 == or && mn+1 == om) = SimpleEnigma (rotateRotor (rr,rn)) (rotateRotor (mr,mn)) (rotateRotor(lr,ln)) r (ol+1, om+1, or+1)
+  checkOffset (SimpleEnigma (rr,rn) (mr,mn) (lr,ln) r (ol, om, or)) | rn+1 == or = SimpleEnigma (rotateRotor(rr,rn)) (rotateRotor(mr,mn)) (lr,ln) r (ol, ofo (om+1), ofo (or+1))
+                                                                    | (rn+1 == or && mn+1 == om) = SimpleEnigma (rotateRotor (rr,rn)) (rotateRotor (mr,mn)) (rotateRotor(lr,ln)) r (ofo (ol+1), ofo (om+1), ofo (or+1))
                                                                     | otherwise = SimpleEnigma (rotateRotor(rr,rn)) (mr,mn) (lr,ln) r (ol, om, or+1)
 
   checkOffset (SteckeredEnigma (rr,rn) (mr,mn) (lr,ln) r (ol, om, or) s) | rn+1 == or = SteckeredEnigma (rotateRotor(rr,rn)) (rotateRotor(mr,mn)) (lr,ln) r (or+1, om+1, ol) s
                                                                          | (rn+1 == or && mn+1 == om) = SteckeredEnigma (rotateRotor (rr,rn)) (rotateRotor (mr,mn)) (rotateRotor(lr,ln)) r (or+1, om+1, ol+1) s
                                                                          | otherwise = SteckeredEnigma (rotateRotor(rr,rn)) (mr,mn) (lr,ln) r (or+1, om, ol) s
+
+  -- Short for offset Overflow
+  -- Checks if offset is greater than 25, if so returns 0
+  ofo :: Int -> Int
+  ofo n = if n >= 26 then 0 else n
 
   -- Returns the character at position 'alphaPos char' in a rotor
   rotorEq :: (String, Int) -> Char -> Char
