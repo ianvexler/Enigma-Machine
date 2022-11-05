@@ -7,6 +7,8 @@ module Enigma where
   import Data.Char  -- to use functions on characters
   import Data.Maybe -- breakEnigma uses Maybe type
   import Data.List
+  import Data.Ord
+  import Debug.Trace
 
 {- Part 1: Simulation of the Enigma -}
 
@@ -42,11 +44,12 @@ module Enigma where
   --missing stecket on second round
   startEncoding str (SteckeredEnigma r1 r2 r3 ref off ste) = 
     if (toUpper (head str)) `elem` ['A'..'Z']
-      then merge ([steckerLetter ste (encodeChar (steckerLetter ste (toUpper (head str))) checkEnigma)]) (startEncoding (tail str) checkEnigma) 
+      then merge (encodeSteckered) (startEncoding (tail str) checkEnigma) 
     else
       merge ([head str]) (startEncoding (tail str) steckeredEnigma)
     where steckeredEnigma = SteckeredEnigma r1 r2 r3 ref off ste
           checkEnigma = checkOffset steckeredEnigma
+          encodeSteckered = [steckerChar ste (encodeChar (steckerChar ste (toUpper (head str))) checkEnigma)]
 
   -- Sets the initial rotors depending on the initial offset
   -- Recursive function so that it is repeated n times
@@ -73,10 +76,11 @@ module Enigma where
   -- If offset matches the knock-on position then add one to the rotor on the left
   checkOffset :: Enigma -> Enigma
   checkOffset (SimpleEnigma (rr,rn) (mr,mn) (lr,ln) r (ol, om, or)) 
-    | rn+1 == or 
-      = SimpleEnigma (rotateRight) (rotateMid) (lr,ln) r (ol, ofMid, ofRight)
-    | (rn+1 == or && mn+1 == om) 
+    -- Checks if the knock-on position of the rotors are equal to the offset
+    | (rn == or+1 && mn == om+1) 
       = SimpleEnigma (rotateRight) (rotateMid) (rotateLeft) r (ofLeft, ofMid, ofRight)
+    | rn == or+1 
+      = SimpleEnigma (rotateRight) (rotateMid) (lr,ln) r (ol, ofMid, ofRight)
     | otherwise 
       = SimpleEnigma (rotateRight) (mr,mn) (lr,ln) r (ol, om, ofRight)
         where rotateRight = rotateRotor (rr,rn)
@@ -85,12 +89,13 @@ module Enigma where
               ofRight = offsetOverflow (or+1)
               ofMid = offsetOverflow (om+1)
               ofLeft = offsetOverflow (ol+1)
-
+  
   checkOffset (SteckeredEnigma (rr,rn) (mr,mn) (lr,ln) r (ol, om, or) s) 
-    | rn+1 == or 
-      = SteckeredEnigma (rotateRight) (rotateMid) (lr,ln) r (ofLeft, ofMid, ofRight) s
-    | (rn+1 == or && mn+1 == om) 
+    -- Checks if the knock-on position of the rotors are equal to the offset
+    | (rn == or+1 && mn == om+1) 
       = SteckeredEnigma (rotateRight) (rotateMid) (rotateLeft) r (ofLeft, ofMid, ofRight) s
+    | rn == or+1 
+      = SteckeredEnigma (rotateRight) (rotateMid) (lr,ln) r (ofLeft, ofMid, ofRight) s
     | otherwise 
       = SteckeredEnigma (rotateRight) (mr,mn) (lr,ln) r (ol, om, ofRight) s
         where rotateRight = rotateRotor (rr,rn)
@@ -118,8 +123,9 @@ module Enigma where
   reflect :: Reflector -> Char -> Char
   reflect ref c = head [if c == a then b else a | (a,b) <- ref, a == c || b == c]
 
-  steckerLetter :: Stecker -> Char -> Char
-  steckerLetter ste c = if length reflect == 0 then c else head reflect
+  -- Similar to reflect but with the steckerboard
+  steckerChar :: Stecker -> Char -> Char
+  steckerChar ste c = if length reflect == 0 then c else head reflect
     where reflect = [if c == a then b else a | (a,b) <- ste, a == c || b == c]
   
   -- Takes the head of the string and adds it to the tail, also adds one to the offset
@@ -129,17 +135,42 @@ module Enigma where
   -- Merges two lists into one
   merge :: [a] -> [a] -> [a]
   merge xs [] = xs
-  merge [] ys     = ys
+  merge [] ys = ys
   merge (x:xs) (y:ys) = x : y : merge xs ys
 
 {- Part 2: Finding the Longest Menu -}
 
-  type Menu = Bool -- the supplied type is not correct; fix it!
-  type Crib = Bool -- the supplied type is not correct; fix it!
+  type Menu = [Int]
+  type Crib = [(Char,Char)] -- (plain, cipher)
 
+  -- loop through every starting position (letter)
   longestMenu :: Crib -> Menu
-  longestMenu _ = False
+  longestMenu [] = []
+  --longestMenu crib = 
+  
+  -- Returns a menu
+  -- Second parameter represents the list of already visited positions
+  findMenu :: Maybe Char -> [Int] -> Crib -> Menu
+  findMenu Nothing xs _ = xs
+  findMenu c xs crib | (getCipher == Nothing) = findMenu Nothing xs crib
+                     | otherwise = traceShow xs (findMenu (Just (fst inCipher)) (xs ++ [snd inCipher]) crib)
+                        where justC = fromJust $ c
+                              getCipher = (findsCipher (justC) crib)
+                              inCipher = longest [(a,b) | (a,b) <- (fromJust $ getCipher), not (b `elem` xs)] xs crib
 
+  long' :: [Menu] -> Menu
+  long' ms = last $ sortBy (comparing $ length) ms
+
+  longest :: [(Char, Int)] -> [Int] -> Crib -> (Char, Int)
+  longest cs xs crib = snd $ last $ sortBy (comparing $ length . fst) [(fromJust $ (findsCipher a crib) , (a,b)) | (a,b) <- cs, (findsCipher a crib) /= Nothing && not (b `elem` xs)] 
+
+  {- Returns a list of chars that are at the same position 
+      as c on the first char on crib tuple and its position -}
+  findsCipher :: (Char) -> Crib -> Maybe [(Char, Int)]
+  findsCipher c crib | length filterCrib > 0 = Just [(b, fromJust $ elemIndex (a,b) crib ) | (a,b) <- filterCrib]
+                     | otherwise = Nothing
+    where filterCrib = filter ((== c) . fst) crib
+  
 {- Part 3: Simulating the Bombe -}
   
   breakEnigma :: Crib -> Maybe (Offsets, Stecker)
