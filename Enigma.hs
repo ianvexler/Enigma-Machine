@@ -145,21 +145,34 @@ module Enigma where
 
   -- loop through every starting position (letter)
   longestMenu :: Crib -> Menu
-  longestMenu [] = []
+  longestMenu crib = last $ sortBy (comparing $ length) [findMenu (Just b) [fromJust $ elemIndex (a,b) crib] crib | (a,b) <- crib]
   --longestMenu crib = 
-  
+
+  -- generateMenu :: Maybe Char -> [Menu] -> Crib -> Menu
+  -- generateMenu Nothing ms _ = 
+
   -- Returns a menu
   -- Second parameter represents the list of already visited positions
   findMenu :: Maybe Char -> [Int] -> Crib -> Menu
   findMenu Nothing xs _ = xs
-  findMenu c xs crib | (getCipher == Nothing) = findMenu Nothing xs crib
-                     | otherwise = traceShow xs (findMenu (Just (fst inCipher)) (xs ++ [snd inCipher]) crib)
+  findMenu c xs crib | (fromCipher == Nothing) = findMenu Nothing xs crib
+                     | otherwise = (findMenu (Just (fst (fromJust $ fromCipher))) (xs ++ [snd (fromJust $ fromCipher)]) crib)
                         where justC = fromJust $ c
                               getCipher = (findsCipher (justC) crib)
-                              inCipher = longest [(a,b) | (a,b) <- (fromJust $ getCipher), not (b `elem` xs)] xs crib
-
-  long' :: [Menu] -> Menu
-  long' ms = last $ sortBy (comparing $ length) ms
+                              fromCipher = nextInMenu getCipher xs
+  
+  -- Returns the head next character in the menu by iterating through the cipher
+  {- If statements check if there is a next char in the menu, if there's not
+     it returns Nothing -}
+  nextInMenu :: Maybe [(Char, Int)] -> [Int] -> Maybe (Char, Int)
+  nextInMenu cs xs = if cs == Nothing
+                    then Nothing
+                   else
+                    if length fromCipher == 0 
+                      then Nothing 
+                    else 
+                      Just (head fromCipher)
+    where fromCipher = [(a,b) | (a,b) <- (fromJust $ cs), not (b `elem` xs)]
 
   longest :: [(Char, Int)] -> [Int] -> Crib -> (Char, Int)
   longest cs xs crib = snd $ last $ sortBy (comparing $ length . fst) [(fromJust $ (findsCipher a crib) , (a,b)) | (a,b) <- cs, (findsCipher a crib) /= Nothing && not (b `elem` xs)] 
