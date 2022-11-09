@@ -26,9 +26,8 @@ main = do
     print (encodeMessage "Here is a test input string." enigma1)
     print "And another test of encodeMessage: "
     print (encodeMessage "Here is a test input string." enigma2)
-    --print (findMenu (Just 'W') [1] (zip crib1 message1))
-
     print "Then a test of longestMenu: "
     print (longestMenu (zip crib1 message1))
+
     --print "And now a test of breakEnigma: "
     --printMaybe (breakEnigma (zip crib2 message2))

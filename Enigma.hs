@@ -143,46 +143,49 @@ module Enigma where
   type Menu = [Int]
   type Crib = [(Char,Char)] -- (plain, cipher)
 
-  -- loop through every starting position (letter)
+  type Queue = [Menu]
+  type Explored = [Menu]
+
+  -- Loop through every starting position (letter)
   longestMenu :: Crib -> Menu
-  longestMenu crib = last $ sortBy (comparing $ length) [findMenu (Just b) [fromJust $ elemIndex (a,b) crib] crib | (a,b) <- crib]
-  --longestMenu crib = 
+  longestMenu [] = []
+  longestMenu crib = last $ sortBy (comparing $ length) (concat (map snd iterateCrib))
+    where iterateCrib = [generateMenu ([[fromJust $ elemIndex (a,b) crib]], []) crib | (a,b) <- crib]
 
-  -- generateMenu :: Maybe Char -> [Menu] -> Crib -> Menu
-  -- generateMenu Nothing ms _ = 
+  generateMenu :: (Queue, Explored) -> Crib -> (Queue, Explored)
+  generateMenu ([], es) _ = ([], es) 
+  generateMenu (ms, es) crib = generateMenu ((updateQueue ms (fst assign)), snd assign) crib
+    where possibleMenus = concat $ [findMenu (cipherEq (last m) crib) m crib | m <- ms]
+          assign = assignMenus possibleMenus (ms, es)
 
-  -- Returns a menu
-  -- Second parameter represents the list of already visited positions
-  findMenu :: Maybe Char -> [Int] -> Crib -> Menu
-  findMenu Nothing xs _ = xs
-  findMenu c xs crib | (fromCipher == Nothing) = findMenu Nothing xs crib
-                     | otherwise = (findMenu (Just (fst (fromJust $ fromCipher))) (xs ++ [snd (fromJust $ fromCipher)]) crib)
-                        where justC = fromJust $ c
-                              getCipher = (findsCipher (justC) crib)
-                              fromCipher = nextInMenu getCipher xs
-  
-  -- Returns the head next character in the menu by iterating through the cipher
-  {- If statements check if there is a next char in the menu, if there's not
-     it returns Nothing -}
-  nextInMenu :: Maybe [(Char, Int)] -> [Int] -> Maybe (Char, Int)
-  nextInMenu cs xs = if cs == Nothing
-                    then Nothing
-                   else
-                    if length fromCipher == 0 
-                      then Nothing 
-                    else 
-                      Just (head fromCipher)
-    where fromCipher = [(a,b) | (a,b) <- (fromJust $ cs), not (b `elem` xs)]
+  updateQueue :: [Menu] -> Queue -> Queue
+  updateQueue [] q = q
+  updateQueue (m:ms) q = updateQueue ms (removeItem m q)
 
-  longest :: [(Char, Int)] -> [Int] -> Crib -> (Char, Int)
-  longest cs xs crib = snd $ last $ sortBy (comparing $ length . fst) [(fromJust $ (findsCipher a crib) , (a,b)) | (a,b) <- cs, (findsCipher a crib) /= Nothing && not (b `elem` xs)] 
+  checkMenu :: (Menu, Bool) -> (Queue, Explored) -> (Queue, Explored)
+  checkMenu (menu, b) (ms, es) | b == True = (ms, es ++ [menu])
+                               | otherwise = (ms ++ [menu], es)
+
+  assignMenus :: [(Menu, Bool)] -> (Queue, Explored) -> (Queue, Explored)
+  assignMenus [] qs = qs
+  assignMenus (m:ms) (qs) = assignMenus ms (checkMenu m qs)
+
+  -- True if fully Explored, False if it goes to queue)
+  findMenu :: Char -> [Int] -> Crib -> [(Menu, Bool)]
+  findMenu c xs crib | fromCipher == Nothing = [(xs, True)]
+                     | otherwise = [(xs ++ [x], False) | x <- fromJust $ fromCipher, not (x `elem` xs)]
+                      where fromCipher = findsCipher c crib
 
   {- Returns a list of chars that are at the same position 
       as c on the first char on crib tuple and its position -}
-  findsCipher :: (Char) -> Crib -> Maybe [(Char, Int)]
-  findsCipher c crib | length filterCrib > 0 = Just [(b, fromJust $ elemIndex (a,b) crib ) | (a,b) <- filterCrib]
+  findsCipher :: (Char) -> Crib -> Maybe [Int]
+  findsCipher c crib | length filterCrib > 0 = Just [fromJust $ elemIndex (a,b) crib | (a,b) <- filterCrib]
                      | otherwise = Nothing
     where filterCrib = filter ((== c) . fst) crib
+  
+
+  cipherEq :: Int -> Crib -> Char
+  cipherEq n crib = snd $ crib!!n 
   
 {- Part 3: Simulating the Bombe -}
   
@@ -226,3 +229,7 @@ module Enigma where
    -}
   alphaPos :: Char -> Int
   alphaPos c = (ord c) - ord 'A'
+
+  removeItem _ [] = []
+  removeItem x (y:ys) | x == y = removeItem x ys
+                    | otherwise = y : removeItem x ys
