@@ -132,58 +132,69 @@ module Enigma where
   rotateRotor :: Rotor -> Rotor
   rotateRotor (st, n) = (((tail st) ++ [(head st)]), n)
 
-  -- Merges two lists into one
-  merge :: [a] -> [a] -> [a]
-  merge xs [] = xs
-  merge [] ys = ys
-  merge (x:xs) (y:ys) = x : y : merge xs ys
-
 {- Part 2: Finding the Longest Menu -}
 
   type Menu = [Int]
   type Crib = [(Char,Char)] -- (plain, cipher)
 
+  -- Queue contains all chains that have to be explored
+  -- Explored contains all chains that have been fully explored
   type Queue = [Menu]
   type Explored = [Menu]
 
-  -- Loop through every starting position (letter)
+  -- Loop through every starting position (letter) at crib
+  -- Generates all possible menus for each starting letter and concatenates all
+  -- Sorts smallest to largest menu and takes the last element
   longestMenu :: Crib -> Menu
   longestMenu [] = []
   longestMenu crib = last $ sortBy (comparing $ length) (concat (map snd iterateCrib))
-    where iterateCrib = [generateMenu ([[fromJust $ elemIndex (a,b) crib]], []) crib | (a,b) <- crib]
+    {- Calls generateMenus for all tuples at crib with its index
+       and an empty list as nothing has been explored -}
+    where iterateCrib = [generateMenus ([[fromJust $ elemIndex (a,b) crib]], []) crib | (a,b) <- crib]
 
-  generateMenu :: (Queue, Explored) -> Crib -> (Queue, Explored)
-  generateMenu ([], es) _ = ([], es) 
-  generateMenu (ms, es) crib = generateMenu ((updateQueue ms (fst assign)), snd assign) crib
+  -- Goes through all menus in the queue until they have been fully explored
+  {- Once the queue is empty, it returns a tuple containing the empty
+     queue and the fully explored menus -}
+  generateMenus :: (Queue, Explored) -> Crib -> (Queue, Explored)
+  generateMenus ([], es) _ = ([], es) 
+  generateMenus (ms, es) crib = generateMenus ((updateQueue ms (fst assign)), snd assign) crib
+    -- possibleMenus = Finds the next menus for all menus as queue
+    -- assign = Assigns them to either Queue or Explored
     where possibleMenus = concat $ [findMenu (cipherEq (last m) crib) m crib | m <- ms]
           assign = assignMenus possibleMenus (ms, es)
 
-  updateQueue :: [Menu] -> Queue -> Queue
-  updateQueue [] q = q
-  updateQueue (m:ms) q = updateQueue ms (removeItem m q)
-
-  checkMenu :: (Menu, Bool) -> (Queue, Explored) -> (Queue, Explored)
-  checkMenu (menu, b) (ms, es) | b == True = (ms, es ++ [menu])
-                               | otherwise = (ms ++ [menu], es)
-
+  -- Iterates through a list of menus assigning them to either queue or explored
   assignMenus :: [(Menu, Bool)] -> (Queue, Explored) -> (Queue, Explored)
   assignMenus [] qs = qs
   assignMenus (m:ms) (qs) = assignMenus ms (checkMenu m qs)
 
-  -- True if fully Explored, False if it goes to queue)
+  -- Checks if the menu should go to Queue or Explored
+  -- Adds the menu to its corresponding list
+  checkMenu :: (Menu, Bool) -> (Queue, Explored) -> (Queue, Explored)
+  checkMenu (menu, b) (ms, es) | b == True = (ms, es ++ [menu])
+                               | otherwise = (ms ++ [menu], es)
+
+  {- Updates the queue by removing the menus that 
+  have already being explored -}
+  updateQueue :: [Menu] -> Queue -> Queue
+  updateQueue [] q = q
+  updateQueue (m:ms) q = updateQueue ms (removeItem m q)
+
+  -- Checks if menu has been fully explored, if not it returns the menus possible
+  -- True if fully Explored, False if it goes to Queue
   findMenu :: Char -> [Int] -> Crib -> [(Menu, Bool)]
   findMenu c xs crib | fromCipher == Nothing = [(xs, True)]
                      | otherwise = [(xs ++ [x], False) | x <- fromJust $ fromCipher, not (x `elem` xs)]
-                      where fromCipher = findsCipher c crib
+                      where fromCipher = findsChain c crib
 
-  {- Returns a list of chars that are at the same position 
-      as c on the first char on crib tuple and its position -}
-  findsCipher :: (Char) -> Crib -> Maybe [Int]
-  findsCipher c crib | length filterCrib > 0 = Just [fromJust $ elemIndex (a,b) crib | (a,b) <- filterCrib]
-                     | otherwise = Nothing
+  {- Checks if there is another chain to add to the menu and returns 
+    the new menus, if not returns Nothing -}
+  findsChain :: Char -> Crib -> Maybe [Int]
+  findsChain c crib | length filterCrib > 0 = Just [fromJust $ elemIndex (a,b) crib | (a,b) <- filterCrib]
+                    | otherwise = Nothing
     where filterCrib = filter ((== c) . fst) crib
   
-
+  -- Returns the Char at position n in the crib
   cipherEq :: Int -> Crib -> Char
   cipherEq n crib = snd $ crib!!n 
   
@@ -191,6 +202,8 @@ module Enigma where
   
   breakEnigma :: Crib -> Maybe (Offsets, Stecker)
   breakEnigma _ = Nothing
+
+  
 
 {- Useful definitions and functions -}
 
@@ -230,6 +243,14 @@ module Enigma where
   alphaPos :: Char -> Int
   alphaPos c = (ord c) - ord 'A'
 
+  -- Merges two lists into one
+  merge :: [a] -> [a] -> [a]
+  merge xs [] = xs
+  merge [] ys = ys
+  merge (x:xs) (y:ys) = x : y : merge xs ys
+
+  -- Removes items from list
+  removeItem :: Eq a => a -> [a] -> [a]
   removeItem _ [] = []
   removeItem x (y:ys) | x == y = removeItem x ys
-                    | otherwise = y : removeItem x ys
+                      | otherwise = y : removeItem x ys

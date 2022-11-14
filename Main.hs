@@ -23,9 +23,9 @@ message2 = "YZCSDCVUFVJAAEMVILWRVSQZFCBPJFVYHUUPHLAPJMTMFNLURRADJFCBRBXBCUSSXVYW
  -}
 main = do
     print "First a test of encodeMessage: "
-    print (encodeMessage "Here is a test input string." enigma1)
+    print (encodeMessage "Here is a test input string" enigma1)
     print "And another test of encodeMessage: "
-    print (encodeMessage "Here is a test input string." enigma2)
+    --print (encodeMessage "Here is a test input string." enigma2)
     print "Then a test of longestMenu: "
     print (longestMenu (zip crib1 message1))
 
