@@ -59,17 +59,17 @@ module Enigma where
 
   -- Encodes a character by making it travel through each rotor, reflector and back
   encodeChar :: Char -> Enigma -> Char
-  encodeChar c (SimpleEnigma r1 r2 r3 ref _) = tripleEncode False (reflect ref trip1) r3 r2 r1
-    where trip1 = tripleEncode True c r1 r2 r3 
+  encodeChar c (SimpleEnigma r1 r2 r3 ref off) = tripleEncode False (reflect ref trip1) r3 r2 r1 off
+    where trip1 = tripleEncode True c r1 r2 r3 off
 
-  encodeChar c (SteckeredEnigma r1 r2 r3 ref _ _) = tripleEncode False (reflect ref trip1) r3 r2 r1
-    where trip1 = tripleEncode True c r1 r2 r3 
+  encodeChar c (SteckeredEnigma r1 r2 r3 ref off _) = tripleEncode False (reflect ref trip1) r3 r2 r1 off
+    where trip1 = tripleEncode True c r1 r2 r3 off
 
   -- Encodes a letter three times with the three different rotors
   -- Boolean input indicates if its going left to right or viceversa
-  tripleEncode :: Bool -> Char -> Rotor -> Rotor -> Rotor -> Char
-  tripleEncode True c r1 r2 r3 = rotorEq r3 (rotorEq r2 (rotorEq r1 c))
-  tripleEncode False c r1 r2 r3 = alphabetEq r3 (alphabetEq r2 (alphabetEq r1 c))
+  tripleEncode :: Bool -> Char -> Rotor -> Rotor -> Rotor -> Offsets -> Char
+  tripleEncode True c r1 r2 r3 (lr, mr, rr) = rotorEq lr r3 (rotorEq mr r2 (rotorEq rr r1 c))
+  tripleEncode False c r1 r2 r3 (lr, mr, rr) = alphabetEq rr r3 (alphabetEq mr r2 (alphabetEq lr r1 c))
 
   -- Function that adds one to the offsets and checks if it will affect other rotors
   -- If offset greater than 25, rotor offset is set to 0
@@ -77,9 +77,9 @@ module Enigma where
   checkOffset :: Enigma -> Enigma
   checkOffset (SimpleEnigma (rr,rn) (mr,mn) (lr,ln) r (ol, om, or)) 
     -- Checks if the knock-on position of the rotors are equal to the offset
-    | (rn == or+1 && mn == om+1) 
+    | (rn+1 == or+1 && mn+1 == om+1) 
       = SimpleEnigma (rotateRight) (rotateMid) (rotateLeft) r (ofLeft, ofMid, ofRight)
-    | rn == or+1 
+    | rn+1 == or+1 
       = SimpleEnigma (rotateRight) (rotateMid) (lr,ln) r (ol, ofMid, ofRight)
     | otherwise 
       = SimpleEnigma (rotateRight) (mr,mn) (lr,ln) r (ol, om, ofRight)
@@ -92,9 +92,9 @@ module Enigma where
   
   checkOffset (SteckeredEnigma (rr,rn) (mr,mn) (lr,ln) r (ol, om, or) s) 
     -- Checks if the knock-on position of the rotors are equal to the offset
-    | (rn == or+1 && mn == om+1) 
+    | (rn+1 == or+1 && mn+1 == om+1) 
       = SteckeredEnigma (rotateRight) (rotateMid) (rotateLeft) r (ofLeft, ofMid, ofRight) s
-    | rn == or+1 
+    | rn+1 == or+1 
       = SteckeredEnigma (rotateRight) (rotateMid) (lr,ln) r (ofLeft, ofMid, ofRight) s
     | otherwise 
       = SteckeredEnigma (rotateRight) (mr,mn) (lr,ln) r (ol, om, ofRight) s
@@ -108,16 +108,19 @@ module Enigma where
   -- Short for offset Overflow
   -- Checks if offset is greater than 25, if so returns 0
   offsetOverflow :: Int -> Int
-  offsetOverflow n = if n >= 26 then 0 else n
+  offsetOverflow n = if n > 25 then 0 else n
 
   -- Returns the character at position 'alphaPos char' in a rotor
-  rotorEq :: (String, Int) -> Char -> Char
-  rotorEq (st, _) c = st!!(alphaPos c)
+  rotorEq :: Int -> Rotor -> Char -> Char
+  rotorEq n (st, _) c = (['A'..'Z']!!(fromJust $ elemIndex (st!!(alphaPos c)) (offsetAlphabet n ['A'..'Z'])))
 
   -- Returns the character at the position of a char in a rotor in the alphabet
-  alphabetEq :: (String, Int) -> Char -> Char
-  alphabetEq (st, _) c = ['A'..'Z']!!(rotorIndex)
-    where rotorIndex = fromJust $ elemIndex c st
+  alphabetEq :: Int -> Rotor -> Char -> Char
+  alphabetEq n (st, _) c = ['A'..'Z']!!(fromJust $ elemIndex (offsetAlphabet n ['A'..'Z']!!(alphaPos c)) st)
+  
+  offsetAlphabet :: Int -> [Char] -> [Char]
+  offsetAlphabet 0 cs = cs
+  offsetAlphabet n (c:cs) = offsetAlphabet (n-1) (cs ++ [c])
 
   -- Returns the reflected letter from the tuple list by iterating though all tuples finding one item that matches input
   reflect :: Reflector -> Char -> Char
@@ -199,10 +202,50 @@ module Enigma where
   cipherEq n crib = snd $ crib!!n 
   
 {- Part 3: Simulating the Bombe -}
-  
-  breakEnigma :: Crib -> Maybe (Offsets, Stecker)
-  breakEnigma _ = Nothing
 
+  breakEnigma :: Crib -> Maybe (Offsets, Stecker)
+  breakEnigma crib = iterateOffsets crib 0
+
+  iterateOffsets :: Crib -> Int -> Maybe (Offsets, Stecker)
+  iterateOffsets _ 17576 = Nothing
+  iterateOffsets crib n = if stecker == Nothing then iterateOffsets crib (n+1) else stecker
+    where enigma = (SimpleEnigma rotor1 rotor2 rotor3 reflectorB (0,0,25))
+          guessEnigma = (setOffsets enigma n)
+          menu = longestMenu crib 
+          init = fst $ crib!!(head menu)
+          stecker = guessStecker crib menu guessEnigma [(init, init)]
+  
+  iterateAlphaber :: 
+
+  guessStecker :: Crib -> Menu -> Enigma -> [(Char, Char)] -> Maybe (Offsets, Stecker)
+  guessStecker _ [] enigma cs = Just (getOffsets enigma, cs)
+  guessStecker crib (m:ms) enigma cs = 
+    traceShow (getOffsets enigma) checkGuess crib ms enigma (cs ++ [((encodeMenuPos (fst $ crib!!m) enigma m), (snd $ crib!!m))])
+
+  checkGuess :: Crib -> Menu -> Enigma -> [(Char, Char)] -> Maybe (Offsets, Stecker) 
+  checkGuess crib ms enigma cs = if checkChain cs == True then Nothing else guessStecker crib ms enigma cs
+
+  encodeMenuPos :: Char -> Enigma -> Int -> Char
+  encodeMenuPos c enigma n = encodeChar c (setOffsets enigma n)
+
+  setOffsets :: Enigma -> Int -> Enigma
+  setOffsets enigma (-1) = enigma
+  setOffsets enigma off = setOffsets (checkOffset enigma) (off-1)
+
+  getOffsets :: Enigma -> Offsets
+  getOffsets (SimpleEnigma _ _ _ _ (ol, om, or)) = (ol, om, or)
+
+  -- Checks if the chain is correct by comparing the last input letter to the previous output letter in the menu
+  checkChain :: [(Char, Char)] -> Bool
+  checkChain cs = True `elem` [if (fst cl == snd c || fst cl == fst c || snd cl == fst c || snd cl == snd c)
+                                 then if (cl == c || (snd cl, fst cl) == c || (snd cl, fst cl) == (snd c, snd c) || cl == (snd c, fst c))
+                                       then False 
+                                     else
+                                      True
+                               else
+                                 False
+                              | c <- (init cs)]
+    where cl = last cs
   
 
 {- Useful definitions and functions -}
