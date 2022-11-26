@@ -17,8 +17,8 @@ module Enigma where
   type Offsets = (Int, Int, Int) 
   type Stecker = [(Char, Char)]
   
-  data Enigma = SimpleEnigma Rotor Rotor Rotor Reflector Offsets
-                | SteckeredEnigma Rotor Rotor Rotor Reflector Offsets Stecker
+  data Enigma = SimpleEnigma Rotor Rotor Rotor Reflector Offsets 
+                | SteckeredEnigma Rotor Rotor Rotor Reflector Offsets Stecker deriving (Show)
 
   -- Sets the rotors depending on their initial offset and calls startEncoding
   encodeMessage :: String -> Enigma -> String
@@ -41,7 +41,6 @@ module Enigma where
     where simpleEnigma = SimpleEnigma r1 r2 r3 ref off
           checkEnigma = checkOffset simpleEnigma
 
-  --missing stecket on second round
   startEncoding str (SteckeredEnigma r1 r2 r3 ref off ste) = 
     if (toUpper (head str)) `elem` ['A'..'Z']
       then merge (encodeSteckered) (startEncoding (tail str) checkEnigma) 
@@ -59,17 +58,19 @@ module Enigma where
 
   -- Encodes a character by making it travel through each rotor, reflector and back
   encodeChar :: Char -> Enigma -> Char
-  encodeChar c (SimpleEnigma r1 r2 r3 ref off) = tripleEncode False (reflect ref trip1) r3 r2 r1 off
-    where trip1 = tripleEncode True c r1 r2 r3 off
+  encodeChar c (SimpleEnigma r1 r2 r3 ref off) = encodeBack (reflect ref trip1) r3 r2 r1 off
+    where trip1 = encodeFwd c r1 r2 r3 off
 
-  encodeChar c (SteckeredEnigma r1 r2 r3 ref off _) = tripleEncode False (reflect ref trip1) r3 r2 r1 off
-    where trip1 = tripleEncode True c r1 r2 r3 off
+  encodeChar c (SteckeredEnigma r1 r2 r3 ref off _) = encodeBack (reflect ref trip1) r3 r2 r1 off
+    where trip1 = encodeFwd c r1 r2 r3 off
 
-  -- Encodes a letter three times with the three different rotors
-  -- Boolean input indicates if its going left to right or viceversa
-  tripleEncode :: Bool -> Char -> Rotor -> Rotor -> Rotor -> Offsets -> Char
-  tripleEncode True c r1 r2 r3 (lr, mr, rr) = rotorEq lr r3 (rotorEq mr r2 (rotorEq rr r1 c))
-  tripleEncode False c r1 r2 r3 (lr, mr, rr) = alphabetEq rr r3 (alphabetEq mr r2 (alphabetEq lr r1 c))
+  -- Encodes a letter three times with the three different rotors on the forward trip
+  encodeFwd :: Char -> Rotor -> Rotor -> Rotor -> Offsets -> Char
+  encodeFwd c r1 r2 r3 (lr, mr, rr) = rotorEq lr r3 (rotorEq mr r2 (rotorEq rr r1 c))
+
+  -- Encodes a letter three times with the three different rotors on the backwards trip
+  encodeBack :: Char -> Rotor -> Rotor -> Rotor -> Offsets -> Char
+  encodeBack c r1 r2 r3 (lr, mr, rr) = alphabetEq rr r3 (alphabetEq mr r2 (alphabetEq lr r1 c))
 
   -- Function that adds one to the offsets and checks if it will affect other rotors
   -- If offset greater than 25, rotor offset is set to 0
@@ -118,6 +119,7 @@ module Enigma where
   alphabetEq :: Int -> Rotor -> Char -> Char
   alphabetEq n (st, _) c = ['A'..'Z']!!(fromJust $ elemIndex (offsetAlphabet n ['A'..'Z']!!(alphaPos c)) st)
   
+  -- Rotates the alphabet to match the offsets
   offsetAlphabet :: Int -> [Char] -> [Char]
   offsetAlphabet 0 cs = cs
   offsetAlphabet n (c:cs) = offsetAlphabet (n-1) (cs ++ [c])
@@ -204,34 +206,52 @@ module Enigma where
 {- Part 3: Simulating the Bombe -}
 
   breakEnigma :: Crib -> Maybe (Offsets, Stecker)
-  breakEnigma crib = iterateOffsets crib 0
+  breakEnigma crib = iterateOffsets crib menu 0
+    where menu = longestMenu crib 
 
-  iterateOffsets :: Crib -> Int -> Maybe (Offsets, Stecker)
-  iterateOffsets _ 17576 = Nothing
-  iterateOffsets crib n = if stecker == Nothing then iterateOffsets crib (n+1) else stecker
-    where enigma = (SimpleEnigma rotor1 rotor2 rotor3 reflectorB (0,0,25))
-          guessEnigma = (setOffsets enigma n)
-          menu = longestMenu crib 
+  -- Iterates through all offsets, if Nothing it moves to the next offset
+  iterateOffsets :: Crib -> Menu -> Int -> Maybe (Offsets, Stecker)
+  iterateOffsets _ _ 17577 = Nothing
+  iterateOffsets crib menu n = iterateAlphabet crib menu setEnigma n ['A'..'Z'] init
+    where setEnigma = (setOffsets enigma n)
           init = fst $ crib!!(head menu)
-          stecker = guessStecker crib menu guessEnigma [(init, init)]
-  
-  iterateAlphaber :: 
+          enigma = (SimpleEnigma (setRotor 25 rotor1) rotor2 rotor3 reflectorB (0,0,25))
 
+  iterateAlphabet :: Crib -> Menu -> Enigma -> Int -> [Char] -> Char -> Maybe (Offsets, Stecker)
+  iterateAlphabet crib menu enigma n [] _ = iterateOffsets crib menu (n+1)
+  iterateAlphabet crib menu enigma n (c:cs) init = 
+    if stecker == Nothing 
+      then iterateAlphabet crib menu enigma n cs init 
+    else 
+      Just (getOffsets enigma, [('A','A')])
+    where stecker = guessStecker crib menu enigma [(c, init)]
+          setEnigma = (setOffsets enigma n)
+  
   guessStecker :: Crib -> Menu -> Enigma -> [(Char, Char)] -> Maybe (Offsets, Stecker)
   guessStecker _ [] enigma cs = Just (getOffsets enigma, cs)
   guessStecker crib (m:ms) enigma cs = 
-    traceShow (getOffsets enigma) checkGuess crib ms enigma (cs ++ [((encodeMenuPos (fst $ crib!!m) enigma m), (snd $ crib!!m))])
+    checkGuess crib ms enigma (cs ++ [((encodeMenuPos (fst $ (last cs)) enigma m), (snd $ crib!!m))])
 
+  -- Checks that the stecker if the stecker has no contradictions
+  {- If a there is a contradiction then returns Nothing, else it
+    will continue guessing -}
   checkGuess :: Crib -> Menu -> Enigma -> [(Char, Char)] -> Maybe (Offsets, Stecker) 
-  checkGuess crib ms enigma cs = if checkChain cs == True then Nothing else guessStecker crib ms enigma cs
+  checkGuess crib ms enigma cs = if checkChain cs == True 
+                                  then Nothing
+                                 else 
+                                   guessStecker crib ms enigma cs 
 
+  -- Encodes the char at a set menu position
   encodeMenuPos :: Char -> Enigma -> Int -> Char
   encodeMenuPos c enigma n = encodeChar c (setOffsets enigma n)
 
+  -- Sets the offsets depending on the position of the menu
+  -- It recursively iterates to -1 to include the initial rotation
   setOffsets :: Enigma -> Int -> Enigma
-  setOffsets enigma (-1) = enigma
+  setOffsets enigma (0) = checkOffset enigma
   setOffsets enigma off = setOffsets (checkOffset enigma) (off-1)
 
+  -- Returns the offsets of an enigma
   getOffsets :: Enigma -> Offsets
   getOffsets (SimpleEnigma _ _ _ _ (ol, om, or)) = (ol, om, or)
 
@@ -240,8 +260,8 @@ module Enigma where
   checkChain cs = True `elem` [if (fst cl == snd c || fst cl == fst c || snd cl == fst c || snd cl == snd c)
                                  then if (cl == c || (snd cl, fst cl) == c || (snd cl, fst cl) == (snd c, snd c) || cl == (snd c, fst c))
                                        then False 
-                                     else
-                                      True
+                                      else
+                                        True
                                else
                                  False
                               | c <- (init cs)]
